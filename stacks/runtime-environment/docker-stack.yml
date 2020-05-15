@@ -1,0 +1,70 @@
+version: "2"
+services:
+
+  db:
+    container_name: ${PROJECT_NAME}-oracle-db
+    image: ${DOCKER_REGISTRY}/base-oracle-db-19:1.0
+    hostname: db
+    restart: unless-stopped
+    entrypoint:
+      - /bin/bash
+      - -c
+    command: ["curl --tlsv1 --insecure -u ${NEXUS_USER}:${NEXUS_PASSWORD} ${NEXUS_URL}/${NEXUS_ARTIFACTS}/sopra-banking-${APPLICATION}-${NEXUS_ARTIFACTS}-db.tgz -o /orabackup/HDB19.tar.gz && /usr/local/bin/entrypoint.sh"]
+    mem_limit: 2g
+    labels:
+      - "project=${PROJECT_NAME}"
+    networks:
+      - net
+
+  bes:
+    container_name: ${PROJECT_NAME}-tsd-bes-runtime
+    image: ${DOCKER_REGISTRY}/sopra-banking-${APPLICATION}-bes-runtime:${NEXUS_ARTIFACTS}
+    hostname: ${PROJECT_NAME}-bes-runtime
+    environment:
+      - DB_HOSTNAME="${PROJECT_NAME}-oracle-db"
+      - DB_PORT=1521
+    labels:
+      - "project=${PROJECT_NAME}"
+    depends_on:
+      - db
+    networks:
+      - net
+
+  bas:
+    container_name: ${PROJECT_NAME}-jboss-bas-runtime
+    image: ${DOCKER_REGISTRY}/sopra-banking-${APPLICATION}-bas-runtime:${NEXUS_ARTIFACTS}
+    hostname: bas-runtime
+    environment:
+      - JCA_HOST=${PROJECT_NAME}-tsd-bes-runtime
+      - JCA_PORT=36865
+      - RJCA_PORT=9004
+      - DB_HOSTNAME=${PROJECT_NAME}-oracle-db
+      - DB_PORT=1521
+    depends_on:
+      - bes
+    labels:
+      - "project=${PROJECT_NAME}"
+    networks:
+      - net
+
+  fas:
+    container_name: ${PROJECT_NAME}-jboss-fas-runtime
+    image: ${DOCKER_REGISTRY}/sopra-banking-${APPLICATION}-fas-runtime:${NEXUS_ARTIFACTS}
+    hostname: fas-runtime
+    environment:
+      - EJB_HOST=${PROJECT_NAME}-jboss-bas-runtime
+      - DB_HOSTNAME="${PROJECT_NAME}-oracle-db"
+      - DB_PORT=1521
+    depends_on:
+      - bas
+    ports:
+      - "${HTTP_PORT_FAS}:8080"
+    labels:
+      - "project=${PROJECT_NAME}"
+    networks:
+      - net
+
+networks:
+  net:
+   external:
+     name: dedicated

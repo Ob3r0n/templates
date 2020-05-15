@@ -1,0 +1,94 @@
+version: "2"
+services:
+
+  db:
+    container_name: ${PROJECT_NAME}-oracle-db-naive
+    image: ${DOCKER_REGISTRY}/base-oracle-db-19:1.0
+    hostname: db
+    restart: unless-stopped
+    mem_limit: 2g
+    labels:
+      - "project=${PROJECT_NAME}"
+    ports:
+      - "${DB_PORT}:1521"
+    volumes:
+      - ora01_dbs:/ora01/app/oracle/product/19.0.0/19.0.0.0/dbs
+    networks:
+      - net
+
+  bes:
+    container_name: ${PROJECT_NAME}-tsd-bes-naive
+    image: ${DOCKER_REGISTRY}/bes-naive:${VERSION}
+    hostname: ${PROJECT_NAME}-bes-runtime
+    labels:
+      - "project=${PROJECT_NAME}"
+    ports:
+      - "${SSH_PORT_BES}:22"
+      - "${LISTENER_PORT_BES}:36864"
+      - "${JCA_PORT_BES}:36865"
+      - "${RJCA_PORT_BES}:36866"
+    environment:
+      - LICENCE_SECRET=/tmp/devhublicense/licfile/devhub
+    depends_on:
+      - db
+    volumes:
+      - ${BES_LICENCE_FILE}:/tmp/devhublicense/licfile/devhub
+    networks:
+      - net
+
+  bas:
+    container_name: ${PROJECT_NAME}-jboss-bas-naive
+    image: ${DOCKER_REGISTRY}/bas-naive:${VERSION}
+    hostname: bas-runtime
+    depends_on:
+      - bes
+    labels:
+      - "project=${PROJECT_NAME}"
+    ports:
+      - "${SSH_PORT_BAS}:22"
+      - "${REMOTING_PORT_BAS}:4447"
+      - "${AJP_PORT_BAS}:8009"
+      - "${HTTP_PORT_BAS}:8080"
+    networks:
+      - net
+
+  fas-standalone:
+    container_name: ${PROJECT_NAME}-jboss-fas-naive
+    image: ${DOCKER_REGISTRY}/fas-naive:${VERSION}
+    hostname: fas-naive
+    depends_on:
+      - bas
+    labels:
+      - "project=${PROJECT_NAME}"
+    ports:
+      - "${SSH_PORT_FAS}:22"
+      - "${HTTP_PORT_FAS}:8080"
+    networks:
+      - net
+
+  fas-wks:
+    container_name: ${PROJECT_NAME}-jboss-fas-wks-naive
+    image: ${DOCKER_REGISTRY}/fas-wks-naive:${VERSION}
+    hostname: fas-wks-naive
+    entrypoint:
+      - /bin/bash
+      - -c
+    command: ["/usr/sbin/sshd -D"]
+    depends_on:
+      - bas
+    labels:
+      - "project=${PROJECT_NAME}"
+    ports:
+      - "${SSH_PORT_WKS}:22"
+      - "${HTTP_PORT_WKS}:8080"
+      - "${HTTPS_PORT_WKS}:8443"
+    networks:
+      - net
+
+volumes:
+  ora01_dbs: {}
+
+networks:
+  net:
+   external:
+     name: dedicated
